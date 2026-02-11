@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useChatContext } from '@/lib/chatContext';
 import ChatHeader from './ChatHeader';
@@ -15,11 +15,15 @@ interface Message {
   is_read: boolean;
   is_edited: boolean;
   created_at: string;
+  reply_to: string | null;
+  deleted_for: string[];
 }
 
 const ChatWindow = () => {
   const { currentUser, otherUser } = useChatContext();
   const [messages, setMessages] = useState<Message[]>([]);
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [otherTyping, setOtherTyping] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Fetch messages
@@ -74,6 +78,33 @@ const ChatWindow = () => {
     };
   }, [currentUser, otherUser]);
 
+  // Typing indicator via presence
+  useEffect(() => {
+    if (!currentUser || !otherUser) return;
+
+    const channel = supabase.channel(`typing-${[currentUser, otherUser].sort().join('-')}`, {
+      config: { presence: { key: currentUser } },
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const otherState = state[otherUser] as any[];
+        setOtherTyping(otherState?.some((s: any) => s.typing) || false);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUser, otherUser]);
+
+  const handleTyping = async (isTyping: boolean) => {
+    const channelName = `typing-${[currentUser!, otherUser!].sort().join('-')}`;
+    const channel = supabase.channel(channelName);
+    await channel.track({ typing: isTyping });
+  };
+
   // Mark received messages as read
   useEffect(() => {
     if (!currentUser || !otherUser) return;
@@ -93,6 +124,13 @@ const ChatWindow = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Build a map of message id -> message for reply lookups
+  const messageMap = useMemo(() => {
+    const map = new Map<string, Message>();
+    messages.forEach(m => map.set(m.id, m));
+    return map;
+  }, [messages]);
+
   return (
     <div className="flex h-screen flex-col bg-background">
       <ChatHeader />
@@ -105,12 +143,30 @@ const ChatWindow = () => {
             key={msg.id}
             message={msg}
             isSent={msg.sender === currentUser}
+            currentUser={currentUser!}
+            onReply={setReplyTo}
+            replyMessage={msg.reply_to ? messageMap.get(msg.reply_to) : null}
           />
         ))}
+        {otherTyping && (
+          <div className="flex justify-start mb-1 px-3">
+            <div className="rounded-xl bg-chat-received rounded-tl-sm px-4 py-2.5">
+              <div className="flex gap-1">
+                <span className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="h-2 w-2 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
-      <MessageInput />
+      <MessageInput
+        replyTo={replyTo}
+        onCancelReply={() => setReplyTo(null)}
+        onTyping={handleTyping}
+      />
     </div>
   );
 };

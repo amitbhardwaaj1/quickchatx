@@ -45,6 +45,7 @@ export type Database = {
         Row: {
           content: string | null
           created_at: string
+          deleted_for: string[] | null
           edited_at: string | null
           id: string
           is_edited: boolean
@@ -53,11 +54,13 @@ export type Database = {
           media_url: string | null
           read_at: string | null
           receiver: string
+          reply_to: string | null
           sender: string
         }
         Insert: {
           content?: string | null
           created_at?: string
+          deleted_for?: string[] | null
           edited_at?: string | null
           id?: string
           is_edited?: boolean
@@ -66,11 +69,13 @@ export type Database = {
           media_url?: string | null
           read_at?: string | null
           receiver: string
+          reply_to?: string | null
           sender: string
         }
         Update: {
           content?: string | null
           created_at?: string
+          deleted_for?: string[] | null
           edited_at?: string | null
           id?: string
           is_edited?: boolean
@@ -79,9 +84,18 @@ export type Database = {
           media_url?: string | null
           read_at?: string | null
           receiver?: string
+          reply_to?: string | null
           sender?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "messages_reply_to_fkey"
+            columns: ["reply_to"]
+            isOneToOne: false
+            referencedRelation: "messages"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
