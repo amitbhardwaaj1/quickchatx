@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_admin: boolean
           is_online: boolean
           last_seen: string | null
           secret_code: string
@@ -26,6 +27,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_admin?: boolean
           is_online?: boolean
           last_seen?: string | null
           secret_code: string
@@ -34,6 +36,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_admin?: boolean
           is_online?: boolean
           last_seen?: string | null
           secret_code?: string

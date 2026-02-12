@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 interface ChatContextType {
   currentUser: string | null;
   otherUser: string | null;
+  setOtherUser: (user: string | null) => void;
   login: (username: string, code: string) => Promise<boolean>;
   logout: () => void;
   isOnline: boolean;
@@ -23,10 +24,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<string | null>(() => {
     return localStorage.getItem('chat_user');
   });
+  const [otherUser, setOtherUser] = useState<string | null>(null);
   const [otherUserOnline, setOtherUserOnline] = useState(false);
   const [otherUserLastSeen, setOtherUserLastSeen] = useState<string | null>(null);
-
-  const otherUser = currentUser === 'amit' ? 'shivam' : currentUser === 'shivam' ? 'amit' : null;
 
   const updateOnlineStatus = useCallback(async (username: string, online: boolean) => {
     await supabase
@@ -57,6 +57,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await updateOnlineStatus(currentUser, false);
     }
     setCurrentUser(null);
+    setOtherUser(null);
     localStorage.removeItem('chat_user');
   };
 
@@ -70,7 +71,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
-    // Heartbeat every 30s
     const heartbeat = setInterval(() => {
       updateOnlineStatus(currentUser, true);
     }, 30000);
@@ -86,7 +86,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (!otherUser) return;
 
-    // Initial fetch
     const fetchStatus = async () => {
       const { data } = await supabase
         .from('chat_users')
@@ -123,6 +122,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <ChatContext.Provider value={{
       currentUser,
       otherUser,
+      setOtherUser,
       login,
       logout,
       isOnline: true,
