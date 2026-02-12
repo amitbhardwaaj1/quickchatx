@@ -1,8 +1,12 @@
 import { useChatContext } from '@/lib/chatContext';
-import { LogOut } from 'lucide-react';
+import { ArrowLeft, LogOut } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
-const ChatHeader = () => {
+interface Props {
+  onBack: () => void;
+}
+
+const ChatHeader = ({ onBack }: Props) => {
   const { otherUser, otherUserOnline, otherUserLastSeen, logout } = useChatContext();
 
   const lastSeenText = otherUserLastSeen
@@ -12,6 +16,9 @@ const ChatHeader = () => {
   return (
     <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
       <div className="flex items-center gap-3">
+        <button onClick={onBack} className="rounded-lg p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <div className="relative">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/20 text-sm font-bold uppercase text-primary">
             {otherUser?.[0]}
