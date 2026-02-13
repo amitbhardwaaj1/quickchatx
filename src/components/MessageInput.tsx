@@ -105,10 +105,10 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
       setText('');
       onCancelReply?.();
       onTyping?.(false);
-      // Keep keyboard open - focus return
-      setTimeout(() => {
+      // Refocus after message sends (user expects keyboard to stay)
+      requestAnimationFrame(() => {
         inputRef.current?.focus();
-      }, 50);
+      });
     } finally {
       setSending(false);
     }
@@ -194,11 +194,6 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               handleSend();
-            }
-          }}
-          onBlur={() => {
-            if (!sending && !uploading) {
-              setTimeout(() => inputRef.current?.focus(), 0);
             }
           }}
           placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}

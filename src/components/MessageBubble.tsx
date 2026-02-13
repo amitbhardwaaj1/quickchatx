@@ -62,15 +62,16 @@ const MessageBubble = ({
     touchStart.current = { x: touch.clientX, y: touch.clientY };
     swiped.current = false;
     longPressTimer.current = setTimeout(() => {
-      if (!swiped.current) {
-        setShowReactions(true);
-        if (bubbleRef.current) {
-          const rect = bubbleRef.current.getBoundingClientRect();
-          setReactionPos({ top: rect.top - 60, left: rect.left + rect.width / 2 - 150 });
+      if (!swiped.current && !selectionMode) {
+        // Long-press enters selection mode (like WhatsApp)
+        onLongPress?.(message.id);
+        // Haptic feedback if available
+        if (navigator.vibrate) {
+          navigator.vibrate(100);
         }
       }
     }, 500);
-  }, []);
+  }, [message.id, onLongPress, selectionMode]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStart.current) return;
@@ -105,8 +106,11 @@ const MessageBubble = ({
   }, [swipeX, message, onReply]);
 
   const handleClick = () => {
-    if (selectionMode) onSelect?.(message.id);
-    if (showReactions) setShowReactions(false);
+    if (selectionMode) {
+      onSelect?.(message.id);
+    } else if (showReactions) {
+      setShowReactions(false);
+    }
   };
 
   const handleDoubleClick = () => {
