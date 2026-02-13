@@ -327,7 +327,7 @@ const ChatWindow = ({ onBack }: Props) => {
   return (
     <div className="fixed inset-0 flex flex-col bg-background">
       {selectionMode ? (
-        <header className="flex items-center justify-between border-b border-border bg-card px-4 py-3">
+        <header className="fixed top-0 left-0 right-0 z-30 flex items-center justify-between border-b border-border bg-card px-4 py-3">
           <div className="flex items-center gap-3">
             <button onClick={exitSelection} className="text-muted-foreground hover:text-foreground">
               <X className="h-5 w-5" />
@@ -347,10 +347,12 @@ const ChatWindow = ({ onBack }: Props) => {
           </div>
         </header>
       ) : (
-        <ChatHeader onBack={onBack} />
+        <div className="fixed top-0 left-0 right-0 z-30">
+          <ChatHeader onBack={onBack} />
+        </div>
       )}
 
-      <div className="flex-1 overflow-y-auto py-2 scrollbar-thin" style={{
+      <div className="fixed top-16 left-0 right-0 bottom-20 overflow-y-auto py-2 scrollbar-thin z-10" style={{
         backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
       }}>
         <MessageList
@@ -370,13 +372,15 @@ const ChatWindow = ({ onBack }: Props) => {
         />
       </div>
 
-      <MessageInput
-        replyTo={replyTo}
-        onCancelReply={() => setReplyTo(null)}
-        onTyping={handleTyping}
-        editingMessage={editingMessage}
-        onCancelEdit={() => setEditingMessage(null)}
-      />
+      <div className="fixed bottom-0 left-0 right-0 z-20">
+        <MessageInput
+          replyTo={replyTo}
+          onCancelReply={() => setReplyTo(null)}
+          onTyping={handleTyping}
+          editingMessage={editingMessage}
+          onCancelEdit={() => setEditingMessage(null)}
+        />
+      </div>
 
       {/* Forward dialog */}
       <AlertDialog open={forwardDialog} onOpenChange={setForwardDialog}>

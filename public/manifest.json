@@ -1,6 +1,6 @@
 {
-  "name": "Chat App",
-  "short_name": "Chat",
+  "name": "QuickChat",
+  "short_name": "QuickChat",
   "description": "A modern real-time chat application with messaging, media sharing, and reactions",
   "start_url": "/",
   "scope": "/",

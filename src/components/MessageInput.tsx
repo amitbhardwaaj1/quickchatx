@@ -28,38 +28,17 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
-  const wasLastFocused = useRef(false);
 
   // When editing message changes, populate text
   useEffect(() => {
     if (editingMessage) {
       setText(editingMessage.content);
       inputRef.current?.focus();
-      setIsFocused(true);
-      wasLastFocused.current = true;
     }
   }, [editingMessage]);
-
-  // Restore focus if input loses it unexpectedly while user is typing
-  // This prevents keyboard from closing on mobile when parent re-renders
-  useEffect(() => {
-    if (!isFocused) return;
-    
-    const handleFocusLoss = () => {
-      // If we were focused and now we're not, restore focus
-      if (document.activeElement !== inputRef.current && wasLastFocused.current) {
-        inputRef.current?.focus();
-      }
-    };
-
-    // Check periodically if input lost focus
-    const interval = setInterval(handleFocusLoss, 100);
-    return () => clearInterval(interval);
-  }, [isFocused]);
 
   const handleTextChange = useCallback((value: string) => {
     setText(value);
@@ -113,10 +92,6 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
       setText('');
       onCancelReply?.();
       onTyping?.(false);
-      // Refocus after message sends (user expects keyboard to stay)
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-      });
     } finally {
       setSending(false);
     }
@@ -156,18 +131,18 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
   return (
     <div className="border-t border-border bg-card px-3 py-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
       {(replyTo || editingMessage) && (
-        <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
-          <div className="flex-1 border-l-2 border-primary pl-2">
+        <div className="mb-2 flex items-start gap-2 rounded-lg bg-muted px-3 py-2">
+          <div className="flex-1 border-l-2 border-primary pl-2 min-w-0">
             <p className="text-xs font-medium text-primary">
               {editingMessage ? 'Editing message' : `Replying to ${replyTo?.sender}`}
             </p>
-            <p className="text-xs text-muted-foreground truncate">
+            <p className="text-xs text-muted-foreground line-clamp-2 break-words">
               {editingMessage
                 ? editingMessage.content
                 : replyTo?.content || (replyTo?.media_url ? '📎 Media' : '')}
             </p>
           </div>
-          <button onClick={handleCancel} className="text-muted-foreground hover:text-foreground">
+          <button onClick={handleCancel} className="text-muted-foreground hover:text-foreground flex-shrink-0">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -205,13 +180,6 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
               e.preventDefault();
               handleSend();
             }
-          }}
-          onFocus={() => {
-            setIsFocused(true);
-            wasLastFocused.current = true;
-          }}
-          onBlur={() => {
-            setIsFocused(false);
           }}
           placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
           className="flex-1 resize-none rounded-full bg-muted px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
