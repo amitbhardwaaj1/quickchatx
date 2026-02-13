@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, memo } from 'react';
 import { Check, CheckCheck, Pencil, Trash2, Reply } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import MediaViewer from './MediaViewer';
@@ -272,4 +272,18 @@ const MessageBubble = ({
   );
 };
 
-export default MessageBubble;
+export default memo(MessageBubble, (prevProps, nextProps) => {
+  // Return true if props are equal (skip re-render), false if different (re-render)
+  return (
+    prevProps.message.id === nextProps.message.id &&
+    prevProps.message.content === nextProps.message.content &&
+    prevProps.message.media_url === nextProps.message.media_url &&
+    prevProps.message.is_read === nextProps.message.is_read &&
+    prevProps.message.is_edited === nextProps.message.is_edited &&
+    JSON.stringify(prevProps.message.reactions) === JSON.stringify(nextProps.message.reactions) &&
+    JSON.stringify(prevProps.message.deleted_for) === JSON.stringify(nextProps.message.deleted_for) &&
+    prevProps.selected === nextProps.selected &&
+    prevProps.selectionMode === nextProps.selectionMode &&
+    prevProps.replyMessage?.id === nextProps.replyMessage?.id
+  );
+});

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { Send, Image, X, Check } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useChatContext } from '@/lib/chatContext';
@@ -28,30 +28,51 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
   const [text, setText] = useState('');
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
+  const wasLastFocused = useRef(false);
 
   // When editing message changes, populate text
   useEffect(() => {
     if (editingMessage) {
       setText(editingMessage.content);
       inputRef.current?.focus();
+      setIsFocused(true);
+      wasLastFocused.current = true;
     }
   }, [editingMessage]);
 
-  const handleTextChange = (value: string) => {
+  // Restore focus if input loses it unexpectedly while user is typing
+  // This prevents keyboard from closing on mobile when parent re-renders
+  useEffect(() => {
+    if (!isFocused) return;
+    
+    const handleFocusLoss = () => {
+      // If we were focused and now we're not, restore focus
+      if (document.activeElement !== inputRef.current && wasLastFocused.current) {
+        inputRef.current?.focus();
+      }
+    };
+
+    // Check periodically if input lost focus
+    const interval = setInterval(handleFocusLoss, 100);
+    return () => clearInterval(interval);
+  }, [isFocused]);
+
+  const handleTextChange = useCallback((value: string) => {
     setText(value);
     onTyping?.(value.length > 0);
     clearTimeout(typingTimeout.current);
     typingTimeout.current = setTimeout(() => onTyping?.(false), 2000);
-  };
+  }, [onTyping]);
 
   useEffect(() => {
     return () => clearTimeout(typingTimeout.current);
   }, []);
 
-  const sendMessage = async (content?: string, mediaUrl?: string, mediaType?: string) => {
+  const sendMessage = useCallback(async (content?: string, mediaUrl?: string, mediaType?: string) => {
     if (!currentUser || !otherUser) return;
     if (!content?.trim() && !mediaUrl) return;
 
@@ -63,9 +84,9 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
       media_type: mediaType || null,
       reply_to: replyTo?.id || null,
     });
-  };
+  }, [currentUser, otherUser, replyTo?.id]);
 
-  const handleSaveEdit = async () => {
+  const handleSaveEdit = useCallback(async () => {
     if (!editingMessage || !text.trim()) return;
     await supabase
       .from('messages')
@@ -75,9 +96,9 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
     onCancelEdit?.();
     // Keep focus on input
     requestAnimationFrame(() => inputRef.current?.focus());
-  };
+  }, [editingMessage, text, onCancelEdit]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (sending) return;
 
     if (editingMessage) {
@@ -89,19 +110,6 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
     setSending(true);
     try {
       await sendMessage(text);
-      // Play send notification sound
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioContext.createOscillator();
-      const gain = audioContext.createGain();
-      osc.connect(gain);
-      gain.connect(audioContext.destination);
-      osc.frequency.setValueAtTime(800, audioContext.currentTime);
-      osc.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.3, audioContext.currentTime);
-      gain.gain.setValueAtTime(0, audioContext.currentTime + 0.1);
-      osc.start(audioContext.currentTime);
-      osc.stop(audioContext.currentTime + 0.1);
-      
       setText('');
       onCancelReply?.();
       onTyping?.(false);
@@ -112,9 +120,9 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
     } finally {
       setSending(false);
     }
-  };
+  }, [sending, editingMessage, text, sendMessage, onCancelReply, onTyping, handleSaveEdit]);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -132,16 +140,18 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
     }
     setUploading(false);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
+    // Restore focus after upload
+    inputRef.current?.focus();
+  }, [sendMessage, onCancelReply]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     if (editingMessage) {
       setText('');
       onCancelEdit?.();
     } else if (replyTo) {
       onCancelReply?.();
     }
-  };
+  }, [editingMessage, replyTo, onCancelEdit, onCancelReply]);
 
   return (
     <div className="border-t border-border bg-card px-3 py-2" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
@@ -196,6 +206,13 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
               handleSend();
             }
           }}
+          onFocus={() => {
+            setIsFocused(true);
+            wasLastFocused.current = true;
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+          }}
           placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
           className="flex-1 resize-none rounded-full bg-muted px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           autoComplete="off"
@@ -220,4 +237,11 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
   );
 };
 
-export default MessageInput;
+export default memo(MessageInput, (prevProps, nextProps) => {
+  // Return true if props are equal (skip re-render), false if different (re-render)
+  return (
+    prevProps.replyTo?.id === nextProps.replyTo?.id &&
+    prevProps.editingMessage?.id === nextProps.editingMessage?.id &&
+    prevProps.editingMessage?.content === nextProps.editingMessage?.content
+  );
+});
