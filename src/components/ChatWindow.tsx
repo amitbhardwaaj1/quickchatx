@@ -46,6 +46,8 @@ const ChatWindow = ({ onBack }: Props) => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [singleDeleteMsg, setSingleDeleteMsg] = useState<Message | null>(null);
+  const [forwardDialog, setForwardDialog] = useState(false);
+  const [forwardUsers, setForwardUsers] = useState<Array<{ username: string }>>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Fetch messages
@@ -157,18 +159,96 @@ const ChatWindow = ({ onBack }: Props) => {
     setSelectedIds(new Set());
   };
 
-  // Reactions
+  const handleQuoteSelected = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    // Build a quoted combined message (simple concatenation)
+    const parts: string[] = [];
+    ids.forEach(id => {
+      const m = messageMap.get(id);
+      if (!m) return;
+      if (m.content) parts.push(`${m.sender}: ${m.content}`);
+      else if (m.media_url) parts.push(`${m.sender}: [Media]`);
+    });
+    const quote = parts.join('\n');
+    const quotedMessage = {
+      id: `quote-${Date.now()}`,
+      sender: currentUser!,
+      content: quote,
+      media_url: null,
+    } as any;
+    setReplyTo(quotedMessage);
+    exitSelection();
+  };
+
+  const loadForwardUsers = async () => {
+    if (!currentUser) return;
+    const { data } = await supabase
+      .from('chat_users')
+      .select('username')
+      .neq('username', currentUser)
+      .order('username');
+    setForwardUsers((data || []) as any);
+  };
+
+  const handleOpenForward = async () => {
+    if (selectedIds.size === 0) return;
+    await loadForwardUsers();
+    setForwardDialog(true);
+  };
+
+  const handleForwardTo = async (target: string) => {
+    const ids = Array.from(selectedIds);
+    for (const id of ids) {
+      const m = messageMap.get(id);
+      if (!m) continue;
+      await supabase.from('messages').insert({
+        sender: currentUser,
+        receiver: target,
+        content: m.content ? `Fwd: ${m.content}` : null,
+        media_url: m.media_url,
+        media_type: m.media_type,
+        reply_to: null,
+      });
+    }
+    setForwardDialog(false);
+    exitSelection();
+  };
+
+  // Reactions - One reaction per user per message (WhatsApp style)
+  // Clicking the same emoji removes it (toggle). Clicking a different emoji replaces previous.
   const handleReact = useCallback(async (messageId: string, emoji: string) => {
     const msg = messageMap.get(messageId);
     if (!msg || !currentUser) return;
     const reactions = { ...(msg.reactions || {}) } as Record<string, string[]>;
-    const users = reactions[emoji] || [];
-    if (users.includes(currentUser)) {
-      reactions[emoji] = users.filter(u => u !== currentUser);
-      if (reactions[emoji].length === 0) delete reactions[emoji];
-    } else {
-      reactions[emoji] = [...users, currentUser];
+
+    // Find if user already has a reaction on this message
+    let userExistingEmoji: string | null = null;
+    for (const [e, users] of Object.entries(reactions)) {
+      if (users.includes(currentUser)) {
+        userExistingEmoji = e;
+        break;
+      }
     }
+
+    // If clicking the same reaction they already have, remove it (toggle off)
+    if (userExistingEmoji === emoji) {
+      reactions[userExistingEmoji] = reactions[userExistingEmoji].filter(u => u !== currentUser);
+      if (reactions[userExistingEmoji].length === 0) delete reactions[userExistingEmoji];
+      await supabase.from('messages').update({ reactions } as any).eq('id', messageId);
+      return;
+    }
+
+    // If they had a different reaction, remove it first
+    if (userExistingEmoji) {
+      reactions[userExistingEmoji] = reactions[userExistingEmoji].filter(u => u !== currentUser);
+      if (reactions[userExistingEmoji].length === 0) delete reactions[userExistingEmoji];
+    }
+
+    // Add the new reaction
+    const users = reactions[emoji] || [];
+    reactions[emoji] = [...users, currentUser];
+
     await supabase.from('messages').update({ reactions } as any).eq('id', messageId);
   }, [messageMap, currentUser]);
 
@@ -250,9 +330,17 @@ const ChatWindow = ({ onBack }: Props) => {
             </button>
             <span className="font-semibold text-foreground">{selectedIds.size} selected</span>
           </div>
-          <button onClick={() => setDeleteDialog(true)} className="rounded-lg p-2 text-destructive hover:bg-destructive/10">
-            <Trash2 className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleQuoteSelected} className="rounded-lg p-2 text-muted-foreground hover:bg-muted/10" title="Quote selected">
+              Quote
+            </button>
+            <button onClick={handleOpenForward} className="rounded-lg p-2 text-muted-foreground hover:bg-muted/10" title="Forward selected">
+              Forward
+            </button>
+            <button onClick={() => setDeleteDialog(true)} className="rounded-lg p-2 text-destructive hover:bg-destructive/10">
+              <Trash2 className="h-5 w-5" />
+            </button>
+          </div>
         </header>
       ) : (
         <ChatHeader onBack={onBack} />
@@ -299,6 +387,26 @@ const ChatWindow = ({ onBack }: Props) => {
         editingMessage={editingMessage}
         onCancelEdit={() => setEditingMessage(null)}
       />
+
+      {/* Forward dialog */}
+      <AlertDialog open={forwardDialog} onOpenChange={setForwardDialog}>
+        <AlertDialogContent className="bg-card border-border">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-foreground">Forward to</AlertDialogTitle>
+            <AlertDialogDescription>Select a contact to forward the selected message(s) to.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="max-h-64 overflow-y-auto">
+            {forwardUsers.map((u) => (
+              <button key={u.username} onClick={() => handleForwardTo(u.username)} className="w-full text-left px-4 py-3 hover:bg-muted/50">
+                {u.username}
+              </button>
+            ))}
+          </div>
+          <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
+            <AlertDialogCancel className="w-full mt-0">Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Single message delete dialog */}
       <AlertDialog open={!!singleDeleteMsg} onOpenChange={() => setSingleDeleteMsg(null)}>

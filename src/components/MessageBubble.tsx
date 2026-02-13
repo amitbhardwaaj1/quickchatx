@@ -14,6 +14,7 @@ interface Message {
   media_type: string | null;
   is_read: boolean;
   is_edited: boolean;
+  read_at?: string | null;
   created_at: string;
   reply_to: string | null;
   deleted_for: string[];
@@ -42,6 +43,7 @@ const MessageBubble = ({
   const [mediaOpen, setMediaOpen] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
   const [showReactions, setShowReactions] = useState(false);
+  const [reactionPos, setReactionPos] = useState<{ top: number; left: number } | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const swiped = useRef(false);
@@ -60,9 +62,15 @@ const MessageBubble = ({
     touchStart.current = { x: touch.clientX, y: touch.clientY };
     swiped.current = false;
     longPressTimer.current = setTimeout(() => {
-      if (!swiped.current) onLongPress?.(message.id);
+      if (!swiped.current) {
+        setShowReactions(true);
+        if (bubbleRef.current) {
+          const rect = bubbleRef.current.getBoundingClientRect();
+          setReactionPos({ top: rect.top - 60, left: rect.left + rect.width / 2 - 150 });
+        }
+      }
     }, 500);
-  }, [message.id, onLongPress]);
+  }, []);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!touchStart.current) return;
@@ -75,8 +83,12 @@ const MessageBubble = ({
       setSwipeX(0);
       return;
     }
-    // Both directions work: sent swipes left, received swipes right
-    const swipeDir = isSent ? -1 : 1;
+    // Prevent swipe reply for own messages (sender cannot swipe their own message to reply)
+    // Received messages swipe right to reply, sent messages don't swipe for reply
+    if (isSent) {
+      return;
+    }
+    const swipeDir = 1; // Only received messages swipe right to reply
     const rawDx = dx * swipeDir;
     if (rawDx > 5) {
       swiped.current = true;
@@ -94,12 +106,19 @@ const MessageBubble = ({
 
   const handleClick = () => {
     if (selectionMode) onSelect?.(message.id);
+    if (showReactions) setShowReactions(false);
   };
 
   const handleDoubleClick = () => {
     if (!selectionMode && !isDeleted) {
-      setShowReactions(true);
+      // Quick like (toggle heart) on double-click/double-tap like WhatsApp
+      onReact(message.id, '❤️');
     }
+  };
+
+  const handleReactionSelect = (emoji: string) => {
+    onReact(message.id, emoji);
+    setShowReactions(false);
   };
 
   if (isDeleted) {
@@ -136,9 +155,17 @@ const MessageBubble = ({
         onTouchEnd={handleTouchEnd}
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setShowReactions(true);
+          if (bubbleRef.current) {
+            const rect = bubbleRef.current.getBoundingClientRect();
+            setReactionPos({ top: rect.top - 60, left: rect.left + rect.width / 2 - 150 });
+          }
+        }}
       >
-        {swipeX !== 0 && (
-          <div className={`absolute ${isSent ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 px-2 text-primary`}>
+        {swipeX !== 0 && !isSent && (
+          <div className="absolute left-0 top-1/2 -translate-y-1/2 px-2 text-primary">
             <Reply className="h-5 w-5" />
           </div>
         )}
@@ -152,13 +179,6 @@ const MessageBubble = ({
         )}
 
         <div className={`relative max-w-[75%] rounded-xl px-3 py-2 ${isSent ? 'bg-chat-sent rounded-tr-sm' : 'bg-chat-received rounded-tl-sm'} ${selected ? 'ring-2 ring-primary' : ''}`}>
-          {showReactions && (
-            <ReactionPicker
-              onReact={(emoji) => onReact(message.id, emoji)}
-              onClose={() => setShowReactions(false)}
-            />
-          )}
-
           {replyMessage && (
             <div className="mb-1.5 rounded-md border-l-2 border-primary bg-background/20 px-2 py-1">
               <p className="text-[11px] font-medium text-primary capitalize">{replyMessage.sender}</p>
@@ -184,20 +204,18 @@ const MessageBubble = ({
             </p>
           )}
 
-          {/* Reactions display */}
+          {/* Reactions display - WhatsApp style */}
           {reactionEntries.length > 0 && (
-            <div className="flex flex-wrap gap-1 mt-1">
+            <div className="flex flex-wrap gap-1 mt-2">
               {reactionEntries.map(([emoji, users]) => (
-                <button
+                <div
                   key={emoji}
-                  onClick={(e) => { e.stopPropagation(); onReact(message.id, emoji); }}
-                  className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs border ${
-                    users.includes(currentUser) ? 'border-primary bg-primary/20' : 'border-border bg-muted/50'
-                  }`}
+                  className="flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs bg-muted/40 border border-muted"
+                  title={users.join(', ')}
                 >
-                  <span>{emoji}</span>
-                  <span className="text-[10px] text-muted-foreground">{users.length}</span>
-                </button>
+                  <span className="text-sm">{emoji}</span>
+                  {users.length > 1 && <span className="text-[10px] font-medium">{users.length}</span>}
+                </div>
               ))}
             </div>
           )}
@@ -205,15 +223,29 @@ const MessageBubble = ({
           <div className="mt-0.5 flex items-center justify-end gap-1">
             {message.is_edited && <span className="text-[10px] text-chat-timestamp">edited</span>}
             <span className="text-[10px] text-chat-timestamp">{time}</span>
-            {isSent && (
-              message.is_read ? <CheckCheck className="h-3.5 w-3.5 text-read-tick" /> : <CheckCheck className="h-3.5 w-3.5 text-muted-foreground" />
-            )}
+                    {isSent && (
+                      message.is_read ? (
+                        message.read_at ? (
+                          <span className="text-[10px] text-muted-foreground">Seen {format(new Date(message.read_at), 'HH:mm')}</span>
+                        ) : (
+                          <CheckCheck className="h-3.5 w-3.5 text-read-tick" />
+                        )
+                      ) : (
+                        <CheckCheck className="h-3.5 w-3.5 text-muted-foreground" />
+                      )
+                    )}
           </div>
 
           {!selectionMode && (
             <div className="absolute -top-3 right-1 hidden gap-0.5 rounded-md bg-card/90 px-1 py-0.5 shadow group-hover:flex">
               <button onClick={() => onReply(message)} className="text-muted-foreground hover:text-foreground p-0.5" title="Reply"><Reply className="h-3.5 w-3.5" /></button>
-              <button onClick={() => setShowReactions(true)} className="text-muted-foreground hover:text-foreground p-0.5" title="React">😊</button>
+              <button onClick={() => {
+                setShowReactions(true);
+                if (bubbleRef.current) {
+                  const rect = bubbleRef.current.getBoundingClientRect();
+                  setReactionPos({ top: rect.top - 60, left: rect.left + rect.width / 2 - 150 });
+                }
+              }} className="text-muted-foreground hover:text-foreground p-0.5" title="React">😊</button>
               {canEdit && <button onClick={() => onEdit(message)} className="text-muted-foreground hover:text-foreground p-0.5" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>}
               <button onClick={() => onDelete(message)} className="text-muted-foreground hover:text-destructive p-0.5" title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>
@@ -223,6 +255,14 @@ const MessageBubble = ({
 
       {mediaOpen && message.media_url && (
         <MediaViewer url={message.media_url} type={message.media_type || 'image'} onClose={() => setMediaOpen(false)} />
+      )}
+
+      {showReactions && reactionPos && (
+        <ReactionPicker
+          position={reactionPos}
+          onReact={handleReactionSelect}
+          onClose={() => setShowReactions(false)}
+        />
       )}
     </>
   );

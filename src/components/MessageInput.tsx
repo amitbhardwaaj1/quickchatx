@@ -29,7 +29,7 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
   const [uploading, setUploading] = useState(false);
   const [sending, setSending] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeout = useRef<ReturnType<typeof setTimeout>>();
 
   // When editing message changes, populate text
@@ -171,16 +171,21 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
           </button>
         )}
 
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
+          rows={1}
           inputMode="text"
           enterKeyHint="send"
           value={text}
           onChange={(e) => handleTextChange(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSend();
+            }
+          }}
           placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
-          className="flex-1 rounded-full bg-muted px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          className="flex-1 resize-none rounded-full bg-muted px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           autoComplete="off"
           autoFocus
         />
