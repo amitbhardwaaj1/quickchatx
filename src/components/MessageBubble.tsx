@@ -2,6 +2,8 @@ import { useState, useRef, useCallback } from 'react';
 import { Check, CheckCheck, Pencil, Trash2, Reply } from 'lucide-react';
 import { format, differenceInMinutes } from 'date-fns';
 import MediaViewer from './MediaViewer';
+import LinkifiedText from './LinkifiedText';
+import ReactionPicker from './ReactionPicker';
 
 interface Message {
   id: string;
@@ -15,6 +17,7 @@ interface Message {
   created_at: string;
   reply_to: string | null;
   deleted_for: string[];
+  reactions?: Record<string, string[]>;
 }
 
 interface Props {
@@ -24,6 +27,7 @@ interface Props {
   onReply: (message: Message) => void;
   onEdit: (message: Message) => void;
   onDelete: (message: Message) => void;
+  onReact: (messageId: string, emoji: string) => void;
   replyMessage?: Message | null;
   selected?: boolean;
   selectionMode?: boolean;
@@ -32,11 +36,12 @@ interface Props {
 }
 
 const MessageBubble = ({
-  message, isSent, currentUser, onReply, onEdit, onDelete,
+  message, isSent, currentUser, onReply, onEdit, onDelete, onReact,
   replyMessage, selected, selectionMode, onSelect, onLongPress,
 }: Props) => {
   const [mediaOpen, setMediaOpen] = useState(false);
   const [swipeX, setSwipeX] = useState(0);
+  const [showReactions, setShowReactions] = useState(false);
   const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const swiped = useRef(false);
@@ -46,7 +51,10 @@ const MessageBubble = ({
   const isDeleted = message.deleted_for?.includes('all') || message.deleted_for?.includes(currentUser);
   const time = format(new Date(message.created_at), 'HH:mm');
 
-  // Touch handlers
+  const reactions = (message.reactions || {}) as Record<string, string[]>;
+  const reactionEntries = Object.entries(reactions).filter(([, users]) => users.length > 0);
+
+  // Touch handlers - swipe to reply (lowered threshold for WhatsApp-like feel)
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     const touch = e.touches[0];
     touchStart.current = { x: touch.clientX, y: touch.clientY };
@@ -61,30 +69,37 @@ const MessageBubble = ({
     const touch = e.touches[0];
     const dx = touch.clientX - touchStart.current.x;
     const dy = touch.clientY - touchStart.current.y;
-    if (Math.abs(dy) > 15) {
+    if (Math.abs(dy) > 20) {
       clearTimeout(longPressTimer.current);
       touchStart.current = null;
       setSwipeX(0);
       return;
     }
+    // Both directions work: sent swipes left, received swipes right
     const swipeDir = isSent ? -1 : 1;
-    const clampedDx = Math.max(0, dx * swipeDir);
-    if (clampedDx > 10) {
+    const rawDx = dx * swipeDir;
+    if (rawDx > 5) {
       swiped.current = true;
       clearTimeout(longPressTimer.current);
-      setSwipeX(Math.min(clampedDx, 80) * swipeDir);
+      setSwipeX(Math.min(rawDx, 80) * swipeDir);
     }
   }, [isSent]);
 
   const handleTouchEnd = useCallback(() => {
     clearTimeout(longPressTimer.current);
-    if (Math.abs(swipeX) >= 60) onReply(message);
+    if (Math.abs(swipeX) >= 30) onReply(message);
     setSwipeX(0);
     touchStart.current = null;
   }, [swipeX, message, onReply]);
 
   const handleClick = () => {
     if (selectionMode) onSelect?.(message.id);
+  };
+
+  const handleDoubleClick = () => {
+    if (!selectionMode && !isDeleted) {
+      setShowReactions(true);
+    }
   };
 
   if (isDeleted) {
@@ -115,11 +130,12 @@ const MessageBubble = ({
       <div
         ref={bubbleRef}
         className={`group flex ${isSent ? 'justify-end' : 'justify-start'} mb-1 px-3 transition-transform`}
-        style={{ transform: `translateX(${swipeX}px)` }}
+        style={{ transform: `translateX(${swipeX}px)`, transition: swipeX === 0 ? 'transform 0.2s' : 'none' }}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
       >
         {swipeX !== 0 && (
           <div className={`absolute ${isSent ? 'right-0' : 'left-0'} top-1/2 -translate-y-1/2 px-2 text-primary`}>
@@ -136,6 +152,13 @@ const MessageBubble = ({
         )}
 
         <div className={`relative max-w-[75%] rounded-xl px-3 py-2 ${isSent ? 'bg-chat-sent rounded-tr-sm' : 'bg-chat-received rounded-tl-sm'} ${selected ? 'ring-2 ring-primary' : ''}`}>
+          {showReactions && (
+            <ReactionPicker
+              onReact={(emoji) => onReact(message.id, emoji)}
+              onClose={() => setShowReactions(false)}
+            />
+          )}
+
           {replyMessage && (
             <div className="mb-1.5 rounded-md border-l-2 border-primary bg-background/20 px-2 py-1">
               <p className="text-[11px] font-medium text-primary capitalize">{replyMessage.sender}</p>
@@ -155,7 +178,29 @@ const MessageBubble = ({
             </div>
           )}
 
-          {message.content && <p className="text-sm text-foreground break-words">{message.content}</p>}
+          {message.content && (
+            <p className="text-sm text-foreground break-words">
+              <LinkifiedText text={message.content} />
+            </p>
+          )}
+
+          {/* Reactions display */}
+          {reactionEntries.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {reactionEntries.map(([emoji, users]) => (
+                <button
+                  key={emoji}
+                  onClick={(e) => { e.stopPropagation(); onReact(message.id, emoji); }}
+                  className={`flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs border ${
+                    users.includes(currentUser) ? 'border-primary bg-primary/20' : 'border-border bg-muted/50'
+                  }`}
+                >
+                  <span>{emoji}</span>
+                  <span className="text-[10px] text-muted-foreground">{users.length}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
           <div className="mt-0.5 flex items-center justify-end gap-1">
             {message.is_edited && <span className="text-[10px] text-chat-timestamp">edited</span>}
@@ -168,6 +213,7 @@ const MessageBubble = ({
           {!selectionMode && (
             <div className="absolute -top-3 right-1 hidden gap-0.5 rounded-md bg-card/90 px-1 py-0.5 shadow group-hover:flex">
               <button onClick={() => onReply(message)} className="text-muted-foreground hover:text-foreground p-0.5" title="Reply"><Reply className="h-3.5 w-3.5" /></button>
+              <button onClick={() => setShowReactions(true)} className="text-muted-foreground hover:text-foreground p-0.5" title="React">😊</button>
               {canEdit && <button onClick={() => onEdit(message)} className="text-muted-foreground hover:text-foreground p-0.5" title="Edit"><Pencil className="h-3.5 w-3.5" /></button>}
               <button onClick={() => onDelete(message)} className="text-muted-foreground hover:text-destructive p-0.5" title="Delete"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>

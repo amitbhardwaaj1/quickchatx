@@ -73,11 +73,13 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
       .eq('id', editingMessage.id);
     setText('');
     onCancelEdit?.();
+    // Keep focus on input
+    requestAnimationFrame(() => inputRef.current?.focus());
   };
 
   const handleSend = async () => {
     if (sending) return;
-    
+
     if (editingMessage) {
       await handleSaveEdit();
       return;
@@ -90,6 +92,8 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
       setText('');
       onCancelReply?.();
       onTyping?.(false);
+      // Keep keyboard open - refocus input after send
+      requestAnimationFrame(() => inputRef.current?.focus());
     } finally {
       setSending(false);
     }
@@ -126,7 +130,6 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
 
   return (
     <div className="border-t border-border bg-card px-3 py-2">
-      {/* Reply or Edit preview */}
       {(replyTo || editingMessage) && (
         <div className="mb-2 flex items-center gap-2 rounded-lg bg-muted px-3 py-2">
           <div className="flex-1 border-l-2 border-primary pl-2">
@@ -173,6 +176,7 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && handleSend()}
           placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
           className="flex-1 rounded-full bg-muted px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          autoComplete="off"
         />
 
         <button

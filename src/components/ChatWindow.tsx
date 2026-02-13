@@ -29,6 +29,7 @@ interface Message {
   created_at: string;
   reply_to: string | null;
   deleted_for: string[];
+  reactions?: Record<string, string[]>;
 }
 
 interface Props {
@@ -50,7 +51,6 @@ const ChatWindow = ({ onBack }: Props) => {
   // Fetch messages
   useEffect(() => {
     if (!currentUser || !otherUser) return;
-
     const fetchMessages = async () => {
       const { data } = await supabase
         .from('messages')
@@ -59,7 +59,6 @@ const ChatWindow = ({ onBack }: Props) => {
           `and(sender.eq.${currentUser},receiver.eq.${otherUser}),and(sender.eq.${otherUser},receiver.eq.${currentUser})`
         )
         .order('created_at', { ascending: true });
-
       if (data) setMessages(data as Message[]);
     };
     fetchMessages();
@@ -68,7 +67,6 @@ const ChatWindow = ({ onBack }: Props) => {
   // Realtime subscription
   useEffect(() => {
     if (!currentUser || !otherUser) return;
-
     const channel = supabase
       .channel('messages-realtime')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
@@ -89,18 +87,15 @@ const ChatWindow = ({ onBack }: Props) => {
         setMessages(prev => prev.filter(m => m.id !== deleted.id));
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, otherUser]);
 
   // Typing indicator
   useEffect(() => {
     if (!currentUser || !otherUser) return;
-
     const channel = supabase.channel(`typing-${[currentUser, otherUser].sort().join('-')}`, {
       config: { presence: { key: currentUser } },
     });
-
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState();
@@ -108,7 +103,6 @@ const ChatWindow = ({ onBack }: Props) => {
         setOtherTyping(otherState?.some((s: any) => s.typing) || false);
       })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
   }, [currentUser, otherUser]);
 
@@ -121,7 +115,6 @@ const ChatWindow = ({ onBack }: Props) => {
   // Mark received messages as read
   useEffect(() => {
     if (!currentUser || !otherUser) return;
-
     const unread = messages.filter(m => m.sender === otherUser && !m.is_read);
     if (unread.length > 0) {
       supabase
@@ -164,10 +157,23 @@ const ChatWindow = ({ onBack }: Props) => {
     setSelectedIds(new Set());
   };
 
+  // Reactions
+  const handleReact = useCallback(async (messageId: string, emoji: string) => {
+    const msg = messageMap.get(messageId);
+    if (!msg || !currentUser) return;
+    const reactions = { ...(msg.reactions || {}) } as Record<string, string[]>;
+    const users = reactions[emoji] || [];
+    if (users.includes(currentUser)) {
+      reactions[emoji] = users.filter(u => u !== currentUser);
+      if (reactions[emoji].length === 0) delete reactions[emoji];
+    } else {
+      reactions[emoji] = [...users, currentUser];
+    }
+    await supabase.from('messages').update({ reactions } as any).eq('id', messageId);
+  }, [messageMap, currentUser]);
+
   // Single message delete
-  const handleSingleDelete = (msg: Message) => {
-    setSingleDeleteMsg(msg);
-  };
+  const handleSingleDelete = (msg: Message) => setSingleDeleteMsg(msg);
 
   const handleDeleteForMe = async () => {
     if (singleDeleteMsg) {
@@ -207,7 +213,6 @@ const ChatWindow = ({ onBack }: Props) => {
     setDeleteDialog(false);
   };
 
-  // Permanently delete (clear space for deleted messages)
   const handleBulkPermanentDelete = async () => {
     const ids = Array.from(selectedIds);
     for (const id of ids) {
@@ -221,7 +226,6 @@ const ChatWindow = ({ onBack }: Props) => {
     setEditingMessage({ id: msg.id, content: msg.content || '' });
   };
 
-  // Check if all selected are own sent and can be deleted for everyone
   const canDeleteForEveryone = useMemo(() => {
     return Array.from(selectedIds).every(id => {
       const msg = messageMap.get(id);
@@ -229,7 +233,6 @@ const ChatWindow = ({ onBack }: Props) => {
     });
   }, [selectedIds, messageMap, currentUser]);
 
-  // Check if any selected are already deleted (for permanent delete)
   const hasDeletedMessages = useMemo(() => {
     return Array.from(selectedIds).some(id => {
       const msg = messageMap.get(id);
@@ -247,10 +250,7 @@ const ChatWindow = ({ onBack }: Props) => {
             </button>
             <span className="font-semibold text-foreground">{selectedIds.size} selected</span>
           </div>
-          <button
-            onClick={() => setDeleteDialog(true)}
-            className="rounded-lg p-2 text-destructive hover:bg-destructive/10"
-          >
+          <button onClick={() => setDeleteDialog(true)} className="rounded-lg p-2 text-destructive hover:bg-destructive/10">
             <Trash2 className="h-5 w-5" />
           </button>
         </header>
@@ -270,6 +270,7 @@ const ChatWindow = ({ onBack }: Props) => {
             onReply={setReplyTo}
             onEdit={handleEdit}
             onDelete={handleSingleDelete}
+            onReact={handleReact}
             replyMessage={msg.reply_to ? messageMap.get(msg.reply_to) : null}
             selected={selectedIds.has(msg.id)}
             selectionMode={selectionMode}
@@ -308,17 +309,11 @@ const ChatWindow = ({ onBack }: Props) => {
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
             {singleDeleteMsg && singleDeleteMsg.sender === currentUser && differenceInMinutes(new Date(), new Date(singleDeleteMsg.created_at)) < 60 && (
-              <AlertDialogAction
-                onClick={handleDeleteForEveryone}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full"
-              >
+              <AlertDialogAction onClick={handleDeleteForEveryone} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full">
                 Delete for everyone
               </AlertDialogAction>
             )}
-            <AlertDialogAction
-              onClick={handleDeleteForMe}
-              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 w-full"
-            >
+            <AlertDialogAction onClick={handleDeleteForMe} className="bg-secondary text-secondary-foreground hover:bg-secondary/80 w-full">
               Delete for me
             </AlertDialogAction>
             <AlertDialogCancel className="w-full mt-0">Cancel</AlertDialogCancel>
@@ -335,24 +330,15 @@ const ChatWindow = ({ onBack }: Props) => {
           </AlertDialogHeader>
           <AlertDialogFooter className="flex-col gap-2 sm:flex-col">
             {canDeleteForEveryone && (
-              <AlertDialogAction
-                onClick={handleBulkDeleteForEveryone}
-                className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full"
-              >
+              <AlertDialogAction onClick={handleBulkDeleteForEveryone} className="bg-destructive text-destructive-foreground hover:bg-destructive/90 w-full">
                 Delete for everyone
               </AlertDialogAction>
             )}
-            <AlertDialogAction
-              onClick={handleBulkDeleteForMe}
-              className="bg-secondary text-secondary-foreground hover:bg-secondary/80 w-full"
-            >
+            <AlertDialogAction onClick={handleBulkDeleteForMe} className="bg-secondary text-secondary-foreground hover:bg-secondary/80 w-full">
               Delete for me
             </AlertDialogAction>
             {hasDeletedMessages && (
-              <AlertDialogAction
-                onClick={handleBulkPermanentDelete}
-                className="bg-destructive/80 text-destructive-foreground hover:bg-destructive w-full"
-              >
+              <AlertDialogAction onClick={handleBulkPermanentDelete} className="bg-destructive/80 text-destructive-foreground hover:bg-destructive w-full">
                 Delete permanently (clear space)
               </AlertDialogAction>
             )}
