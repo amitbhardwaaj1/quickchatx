@@ -1,6 +1,7 @@
 import { useChatContext } from '@/lib/chatContext';
 import { ArrowLeft, LogOut } from 'lucide-react';
 import { format } from 'date-fns';
+import PWAInstallButton from './PWAInstallButton';
 
 interface Props {
   onBack: () => void;
@@ -34,13 +35,16 @@ const ChatHeader = ({ onBack }: Props) => {
           </p>
         </div>
       </div>
-      <button
-        onClick={logout}
-        className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        title="Logout"
-      >
-        <LogOut className="h-5 w-5" />
-      </button>
+      <div className="flex items-center gap-2">
+        <PWAInstallButton />
+        <button
+          onClick={logout}
+          className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          title="Logout"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>
+      </div>
     </header>
   );
 };

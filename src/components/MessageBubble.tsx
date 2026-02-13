@@ -84,17 +84,13 @@ const MessageBubble = ({
       setSwipeX(0);
       return;
     }
-    // Prevent swipe reply for own messages (sender cannot swipe their own message to reply)
-    // Received messages swipe right to reply, sent messages don't swipe for reply
-    if (isSent) {
-      return;
-    }
-    const swipeDir = 1; // Only received messages swipe right to reply
+    // Allow swipe reply for both sent and received messages (can reply to own messages)
+    const swipeDir = isSent ? -1 : 1; // Sent messages swipe left, received messages swipe right
     const rawDx = dx * swipeDir;
     if (rawDx > 5) {
       swiped.current = true;
       clearTimeout(longPressTimer.current);
-      setSwipeX(Math.min(rawDx, 80) * swipeDir);
+      setSwipeX(Math.min(Math.abs(rawDx), 80) * swipeDir);
     }
   }, [isSent]);
 
@@ -168,8 +164,8 @@ const MessageBubble = ({
           }
         }}
       >
-        {swipeX !== 0 && !isSent && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 px-2 text-primary">
+        {swipeX !== 0 && (
+          <div className={`absolute top-1/2 -translate-y-1/2 px-2 text-primary ${isSent ? 'right-0' : 'left-0'}`}>
             <Reply className="h-5 w-5" />
           </div>
         )}

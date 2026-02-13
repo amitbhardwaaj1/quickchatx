@@ -2,25 +2,100 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- TODO: Set the document title to the name of your application -->
-    <title>Lovable App</title>
-    <meta name="description" content="Lovable Generated Project" />
-    <meta name="author" content="Lovable" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Chat App</title>
+    <meta name="description" content="A modern real-time chat application with messaging, media sharing, and reactions" />
+    <meta name="author" content="Chat App" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="light dark" />
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Apple Web App -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Chat" />
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#000000" />
 
-    <!-- TODO: Update og:title to match your application name -->
-    <meta property="og:title" content="Lovable App" />
-    <meta property="og:description" content="Lovable Generated Project" />
+    <!-- OG Tags -->
+    <meta property="og:title" content="Chat App" />
+    <meta property="og:description" content="A modern real-time chat application with messaging, media sharing, and reactions" />
     <meta property="og:type" content="website" />
-    <meta property="og:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
 
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:site" content="@Lovable" />
-    <meta name="twitter:image" content="https://lovable.dev/opengraph-image-p98pqg.png" />
+    <meta name="twitter:site" content="@ChatApp" />
+    
+    <!-- Favicon -->
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="shortcut icon" href="/favicon.ico" />
   </head>
 
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Register Service Worker for offline support and caching
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js', { scope: '/' })
+          .then((reg) => {
+            console.log('Service Worker registered successfully:', reg);
+            
+            // Check for updates periodically
+            setInterval(() => {
+              reg.update();
+            }, 60000); // Check every minute
+          })
+          .catch((err) => {
+            console.log('Service Worker registration failed:', err);
+          });
+      }
+
+      // PWA Install Prompt
+      let deferredPrompt;
+      
+      window.addEventListener('beforeinstallprompt', (e) => {
+        // Prevent the mini-infobar from appearing
+        e.preventDefault();
+        // Stash the event for later use.
+        deferredPrompt = e;
+        // Show install button
+        const installButton = document.getElementById('pwa-install-button');
+        if (installButton) {
+          installButton.style.display = 'block';
+        }
+      });
+
+      // Global install function for UI buttons
+      window.installApp = async () => {
+        if (deferredPrompt) {
+          // Show the install prompt.
+          deferredPrompt.prompt();
+          // Wait for the user to respond to the prompt
+          const { outcome } = await deferredPrompt.userChoice;
+          console.log(`User response to the install prompt: ${outcome}`);
+          // Clear the deferredPrompt for the next time.
+          deferredPrompt = null;
+          // Hide install button
+          const installButton = document.getElementById('pwa-install-button');
+          if (installButton) {
+            installButton.style.display = 'none';
+          }
+        }
+      };
+
+      // Listen for app installed event
+      window.addEventListener('appinstalled', () => {
+        console.log('PWA was installed successfully');
+        deferredPrompt = null;
+        const installButton = document.getElementById('pwa-install-button');
+        if (installButton) {
+          installButton.style.display = 'none';
+        }
+      });
+    </script>
   </body>
 </html>
