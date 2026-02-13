@@ -199,7 +199,7 @@ const MessageBubble = ({
           )}
 
           {message.content && (
-            <p className="text-sm text-foreground break-words">
+            <p className="text-sm text-foreground break-words select-text cursor-text">
               <LinkifiedText text={message.content} />
             </p>
           )}

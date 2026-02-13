@@ -127,10 +127,14 @@ const ChatWindow = ({ onBack }: Props) => {
     }
   }, [messages, currentUser, otherUser]);
 
-  // Scroll to bottom
+  // Scroll to bottom (only when new messages arrive, not on reaction changes)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    // Debounce scroll to avoid jumping on every reaction update
+    const timer = setTimeout(() => {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [messages.length]);
 
   const messageMap = useMemo(() => {
     const map = new Map<string, Message>();

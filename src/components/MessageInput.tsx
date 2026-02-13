@@ -89,13 +89,25 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
     setSending(true);
     try {
       await sendMessage(text);
+      // Play send notification sound
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+      osc.frequency.setValueAtTime(800, audioContext.currentTime);
+      osc.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gain.gain.setValueAtTime(0, audioContext.currentTime + 0.1);
+      osc.start(audioContext.currentTime);
+      osc.stop(audioContext.currentTime + 0.1);
+      
       setText('');
       onCancelReply?.();
       onTyping?.(false);
-      // Keep keyboard open - aggressive refocus
+      // Keep keyboard open - focus return
       setTimeout(() => {
         inputRef.current?.focus();
-        inputRef.current?.click();
       }, 50);
     } finally {
       setSending(false);
@@ -182,6 +194,11 @@ const MessageInput = ({ replyTo, onCancelReply, onTyping, editingMessage, onCanc
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               handleSend();
+            }
+          }}
+          onBlur={() => {
+            if (!sending && !uploading) {
+              setTimeout(() => inputRef.current?.focus(), 0);
             }
           }}
           placeholder={editingMessage ? 'Edit message...' : 'Type a message...'}
