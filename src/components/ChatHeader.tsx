@@ -1,6 +1,6 @@
 import { useChatContext } from '@/lib/chatContext';
 import { ArrowLeft, LogOut } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { format } from 'date-fns';
 
 interface Props {
   onBack: () => void;
@@ -10,7 +10,7 @@ const ChatHeader = ({ onBack }: Props) => {
   const { otherUser, otherUserOnline, otherUserLastSeen, logout } = useChatContext();
 
   const lastSeenText = otherUserLastSeen
-    ? `last seen ${formatDistanceToNow(new Date(otherUserLastSeen), { addSuffix: true })}`
+    ? `last seen ${format(new Date(otherUserLastSeen), 'dd/MM/yyyy, hh:mm a')}`
     : '';
 
   return (
