@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useChatContext } from '@/lib/chatContext';
 import { LogOut, Settings, MessageCircle } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface ChatUser {
   id: string;
@@ -20,6 +21,7 @@ const UserListScreen = ({ onSelectUser, onOpenAdmin }: Props) => {
   const { currentUser, logout } = useChatContext();
   const [users, setUsers] = useState<ChatUser[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!currentUser) return;
@@ -32,7 +34,6 @@ const UserListScreen = ({ onSelectUser, onOpenAdmin }: Props) => {
         .order('username');
       if (data) setUsers(data as ChatUser[]);
 
-      // Check if current user is admin
       const { data: me } = await supabase
         .from('chat_users')
         .select('is_admin')
@@ -40,22 +41,43 @@ const UserListScreen = ({ onSelectUser, onOpenAdmin }: Props) => {
         .single();
       if (me) setIsAdmin(me.is_admin);
     };
-    fetchUsers();
 
-    // Realtime updates for user statuses
+    const fetchUnreadCounts = async () => {
+      const { data } = await supabase
+        .from('messages')
+        .select('sender')
+        .eq('receiver', currentUser)
+        .eq('is_read', false);
+      if (data) {
+        const counts: Record<string, number> = {};
+        data.forEach((msg: any) => {
+          counts[msg.sender] = (counts[msg.sender] || 0) + 1;
+        });
+        setUnreadCounts(counts);
+      }
+    };
+
+    fetchUsers();
+    fetchUnreadCounts();
+
     const channel = supabase
       .channel('users-status-list')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'chat_users',
-      }, () => {
-        fetchUsers();
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_users' }, () => fetchUsers())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchUnreadCounts())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, [currentUser]);
+
+  const getLastSeenText = (user: ChatUser) => {
+    if (user.is_online) return 'online';
+    if (!user.last_seen) return '';
+    try {
+      return `last seen ${format(new Date(user.last_seen), 'dd/MM/yyyy, hh:mm a')}`;
+    } catch {
+      return '';
+    }
+  };
 
   return (
     <div className="flex h-screen flex-col bg-background">
@@ -66,19 +88,11 @@ const UserListScreen = ({ onSelectUser, onOpenAdmin }: Props) => {
         </div>
         <div className="flex items-center gap-1">
           {isAdmin && (
-            <button
-              onClick={onOpenAdmin}
-              className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-              title="Admin Panel"
-            >
+            <button onClick={onOpenAdmin} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" title="Admin Panel">
               <Settings className="h-5 w-5" />
             </button>
           )}
-          <button
-            onClick={logout}
-            className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-            title="Logout"
-          >
+          <button onClick={logout} className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground" title="Logout">
             <LogOut className="h-5 w-5" />
           </button>
         </div>
@@ -108,10 +122,15 @@ const UserListScreen = ({ onSelectUser, onOpenAdmin }: Props) => {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-semibold text-foreground capitalize">{user.username}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {user.is_online ? 'online' : 'offline'}
+                  <p className={`text-xs ${user.is_online ? 'text-online' : 'text-muted-foreground'}`}>
+                    {getLastSeenText(user)}
                   </p>
                 </div>
+                {unreadCounts[user.username] > 0 && (
+                  <div className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5">
+                    <span className="text-[11px] font-bold text-primary-foreground">{unreadCounts[user.username]}</span>
+                  </div>
+                )}
               </button>
             ))}
           </div>
